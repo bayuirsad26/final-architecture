@@ -1,0 +1,155 @@
+@startuml GCP_Alternative_3
+' Alternative 3: kkocel Fork (Updated version)
+!define GCPPuml https://raw.githubusercontent.com/kkocel/gcp-icons-for-plantuml/master/dist
+!include GCPPuml/GCPCommon.puml
+!include GCPPuml/Compute/ComputeEngine.puml
+!include GCPPuml/Compute/KubernetesEngine.puml
+!include GCPPuml/Networking/CloudLoadBalancing.puml
+!include GCPPuml/Networking/CloudNAT.puml
+!include GCPPuml/Storage/CloudStorage.puml
+!include GCPPuml/Databases/CloudSQL.puml
+
+skinparam linetype ortho
+skinparam backgroundColor #FFFFFF
+
+title **GCP Infrastructure Architecture**\nProject: robotic-aviary-362406 | Monthly: ~Rp 12.1M\n
+
+actor "Users" as users #4285F4
+
+package "GCP Project" {
+  
+  package "Load Balancers (Rp 2.6M)" #E1F5FE {
+    CloudLoadBalancing(lb_nginx, "nginx-ingress\n34.87.110.0", "Production")
+    CloudLoadBalancing(lb_argocd, "argocd-server\n34.124.153.2", "GitOps")
+    CloudLoadBalancing(lb_next, "next-template\n34.142.200.213", "Development")
+    CloudLoadBalancing(lb_bucket, "bucket-ops\n35.190.2.49", "Global")
+  }
+  
+  package "GKE: kube-pharindo (Rp 3.7M)" #E8F5E9 {
+    KubernetesEngine(gke_cp, "Control Plane\nv1.32.9", "asia-southeast1-a")
+    
+    rectangle "3 Worker Nodes" {
+      ComputeEngine(node1, "Node-1\ne2-standard-2", "10.148.15.212")
+      ComputeEngine(node2, "Node-2\ne2-standard-2", "10.148.15.211")
+      ComputeEngine(node3, "Node-3\ne2-standard-2", "10.148.15.214")
+    }
+    
+    rectangle "Workloads" #C8E6C9 {
+      rectangle "ingress-nginx" as ns1
+      rectangle "argocd" as ns2
+      rectangle "develop/next" as ns3
+    }
+    
+    CloudStorage(pvcs, "Persistent Volumes\n5 PVCs, 55GB", "")
+  }
+  
+  package "Compute Engine (Rp 3.4M)" #FFF9C4 {
+    ComputeEngine(hclab, "hclab-server\nn2d-standard-4", "34.87.126.92\nProduction")
+    CloudStorage(hclab_disk, "630GB\nSSD + Data", "")
+    
+    ComputeEngine(vpn, "openvpn-server\ne2-micro", "35.213.144.129\nVPN")
+    
+    rectangle "⚠️ TERMINATED (Rp 1.3M WASTE!)" #FFCDD2 {
+      ComputeEngine(test_vm, "hclab-test\nSTOPPED", "DELETE NOW!")
+      CloudStorage(test_disk, "630GB UNUSED", "")
+    }
+  }
+  
+  package "Cloud SQL (Rp 636K)" #E3F2FD {
+    CloudSQL(econolab, "econolab\nPostgreSQL 17", "db-custom-1-3840\nRUNNING")
+    CloudSQL(agrotech, "agrotech-staging\nPostgreSQL 16", "STOPPED")
+  }
+  
+  package "Cloud Storage (Rp 15K)" #F3E5F5 {
+    rectangle "10 Buckets, 43.5 GB Total" {
+      CloudStorage(artifacts, "asia.artifacts\n8.71 GB", "Container Registry")
+      CloudStorage(pharindo, "pharindo-ops\n15.28 GB", "Operations")
+      CloudStorage(econolab_gke, "econolab-gke\n12.32 GB", "App Data")
+      CloudStorage(others, "7 Other Buckets\n7.19 GB", "Misc")
+    }
+  }
+  
+  CloudNAT(nat, "Cloud NAT\n34.142.214.36", "Outbound Gateway")
+}
+
+' Connections
+users --> lb_nginx : "Production"
+users --> lb_argocd : "GitOps"
+users --> lb_next : "Dev"
+
+lb_nginx --> gke_cp
+lb_argocd --> gke_cp
+lb_next --> gke_cp
+
+gke_cp --> node1
+gke_cp --> node2
+gke_cp --> node3
+
+node1 --> ns1
+node1 --> ns2
+node1 --> ns3
+node2 --> ns1
+node3 --> ns1
+
+node1 --> pvcs
+node2 --> pvcs
+
+ns1 --> econolab
+ns2 --> econolab
+ns3 --> econolab
+hclab --> econolab
+
+node1 --> artifacts : "Pull"
+node1 --> econolab_gke : "Data"
+hclab --> pharindo : "Ops"
+
+gke_cp --> nat
+hclab --> nat
+vpn --> nat
+
+hclab -down-> hclab_disk
+test_vm -down-> test_disk
+
+note top of test_vm
+  **⚠️ URGENT ACTION NEEDED**
+  
+  Terminated VM wasting resources:
+  • Monthly: Rp 1,316,770
+  • Yearly: Rp 15,801,240
+  
+  **Delete commands:**
+  gcloud compute instances delete hclab-server-test
+  gcloud compute disks delete hclab-server-test
+  gcloud compute disks delete hclab-server-test-1
+  gcloud compute addresses delete hclab-server-test
+end note
+
+legend right
+  **Monthly Cost Analysis (IDR)**
+  
+  |= Component |= Cost |= % |
+  | <color:#4285F4>●</color> GKE Cluster | Rp 3,739,692 | 31% |
+  | <color:#FBBC04>●</color> Compute VMs | Rp 3,354,514 | 28% |
+  | <color:#34A853>●</color> Load Balancers | Rp 2,602,030 | 22% |
+  | <color:#EA4335>●</color> ⚠️ Wasted | Rp 1,316,770 | 11% |
+  | <color:#4285F4>●</color> Cloud SQL | Rp 636,368 | 5% |
+  | <color:#9AA0A6>●</color> Storage | Rp 14,926 | <1% |
+  | <color:#9AA0A6>●</color> Other | Rp 414,600 | 3% |
+  |= **TOTAL** |= **Rp 12,078,900** |= **100%** |
+  
+  **After Cleanup:** Rp 10,762,130
+  **Annual Savings:** Rp 15,801,240
+  
+  ---
+  
+  **Infrastructure Summary:**
+  • GKE Nodes: 3x e2-standard-2 (6 vCPU, 24GB)
+  • Standalone VMs: 2 running, 1 terminated
+  • Databases: 2 PostgreSQL (1 active, 1 stopped)
+  • Storage: 1.35 TB disks + 43.5 GB GCS
+  • Load Balancers: 5 (3 regional + 2 global)
+endlegend
+
+center footer DevOps Team - Platform Engineering | bayu.pharos26@gmail.com
+
+@enduml

@@ -1,0 +1,284 @@
+@startuml GCP_Infrastructure_Architecture
+skinparam backgroundColor #FEFEFE
+skinparam defaultTextAlignment center
+skinparam shadowing false
+skinparam linetype ortho
+skinparam packageStyle rectangle
+
+' Color definitions
+skinparam component {
+  BackgroundColor<<gke>> #E8F5E9
+  BorderColor<<gke>> #66BB6A
+  BackgroundColor<<compute>> #FFF9C4
+  BorderColor<<compute>> #FDD835
+  BackgroundColor<<database>> #E3F2FD
+  BorderColor<<database>> #42A5F5
+  BackgroundColor<<storage>> #F3E5F5
+  BorderColor<<storage>> #AB47BC
+  BackgroundColor<<network>> #E0F7FA
+  BorderColor<<network>> #26C6DA
+  BackgroundColor<<lb>> #E1F5FE
+  BorderColor<<lb>> #29B6F6
+  BackgroundColor<<warning>> #FFEBEE
+  BorderColor<<warning>> #EF5350
+  BackgroundColor<<monitoring>> #ECEFF1
+  BorderColor<<monitoring>> #78909C
+}
+
+title **GCP Infrastructure Architecture**\nProject: robotic-aviary-362406 | Region: asia-southeast1\n
+
+actor "External\nUsers" as users #LightBlue
+
+package "Internet Gateway" {
+  cloud "Public Internet" as internet #LightGray
+}
+
+rectangle "GCP Project: robotic-aviary-362406" {
+  
+  ' ============ NETWORKING LAYER ============
+  package "Networking Layer" #E0F7FA {
+    rectangle "VPC Network (default)" as vpc <<network>> {
+      component "Subnet\n10.148.0.0/20" as subnet
+      component "Private IP Range\n10.234.48.0/20\nVPC Peering" as private_ip
+    }
+    
+    component "Cloud NAT\n34.142.214.36\nOutbound Gateway" as nat <<network>>
+    
+    package "Static External IPs" {
+      component "hclab-server-ext\n34.87.126.92" as ext_ip1 <<network>>
+      component "openvpn\n35.213.144.129" as ext_ip2 <<network>>
+      component "hclab-test\n35.240.172.98\n⚠️ UNUSED" as ext_ip3 <<warning>>
+    }
+  }
+  
+  ' ============ LOAD BALANCING LAYER ============
+  package "Load Balancing Layer" #E1F5FE {
+    rectangle "Global Load Balancers" {
+      component "bucket-operation-test\nIPv4: 35.190.2.49\nIPv6: 2600:1901:0:64dd::" as glb1 <<lb>>
+    }
+    
+    rectangle "Regional Load Balancers (asia-southeast1)" {
+      component "nginx-ingress\n34.87.110.0\nPorts: 80-443" as rlb1 <<lb>>
+      component "argocd-server\n34.124.153.2\nPorts: 80-443" as rlb2 <<lb>>
+      component "next-template\n34.142.200.213\nPort: 80 (develop)" as rlb3 <<lb>>
+    }
+  }
+  
+  ' ============ GKE CLUSTER ============
+  package "GKE Cluster: kube-pharindo (asia-southeast1-a)" #E8F5E9 {
+    component "Control Plane\nVersion: 1.32.9-gke.1072000\nCost: ~Rp 1.2M/month" as gke_control <<gke>>
+    
+    package "Node Pool: pool-svc-1" {
+      component "Node 1\ne2-standard-2\n2vCPU, 8GB\n10.148.15.212\n30GB disk" as node1 <<gke>>
+      component "Node 2\ne2-standard-2\n2vCPU, 8GB\n10.148.15.211\n30GB disk" as node2 <<gke>>
+      component "Node 3\ne2-standard-2\n2vCPU, 8GB\n10.148.15.214\n30GB disk" as node3 <<gke>>
+    }
+    
+    package "Kubernetes Namespaces" {
+      component "ingress-nginx\nNGINX Ingress\nController" as ns_nginx <<gke>>
+      component "argocd\nArgoCD Server\nGitOps Platform" as ns_argocd <<gke>>
+      component "develop\nnext-template\nApplication" as ns_develop <<gke>>
+    }
+    
+    package "Persistent Volumes" {
+      database "PVC-1\n5GB\nBalanced" as pvc1 <<storage>>
+      database "PVC-2\n10GB\nStandard" as pvc2 <<storage>>
+      database "PVC-3\n5GB\nBalanced" as pvc3 <<storage>>
+      database "PVC-4\n10GB\nStandard" as pvc4 <<storage>>
+      database "PVC-5\n10GB\nStandard" as pvc5 <<storage>>
+    }
+  }
+  
+  ' ============ COMPUTE ENGINE VMs ============
+  package "Compute Engine VMs" #FFF9C4 {
+    rectangle "hclab-server (asia-southeast1-b)" as vm1_box <<compute>> {
+      component "n2d-standard-4\n4vCPU, 16GB RAM\n10.148.0.17\nCost: ~Rp 2M/month" as vm_hclab
+      database "Boot Disk\n130GB SSD" as disk_hclab1 <<storage>>
+      database "Data Disk\n500GB Balanced\n(data-1)" as disk_hclab2 <<storage>>
+    }
+    
+    rectangle "openvpn-server (asia-southeast1-b)" as vm2_box <<compute>> {
+      component "e2-micro\n10.148.0.45\nCost: ~Rp 100K/month" as vm_openvpn
+      database "Boot Disk\n10GB Balanced" as disk_openvpn <<storage>>
+    }
+    
+    rectangle "⚠️ hclab-server-test (asia-southeast1-c)" as vm3_box <<warning>> {
+      component "n2d-standard-4\nSTATUS: TERMINATED\n⚠️ WASTING Rp 1.3M/month" as vm_test
+      database "Boot Disk\n130GB SSD\nUNUSED" as disk_test1 <<warning>>
+      database "Data Disk\n500GB Balanced\nUNUSED" as disk_test2 <<warning>>
+    }
+  }
+  
+  ' ============ CLOUD SQL ============
+  package "Cloud SQL Databases" #E3F2FD {
+    database "econolab\nPostgreSQL 17\ndb-custom-1-3840\n1vCPU, 3.84GB RAM\n10GB SSD\nSTATUS: RUNNING\nCost: ~Rp 620K/month" as sql_econolab <<database>>
+    
+    database "agrotech-staging\nPostgreSQL 16\nSTATUS: STOPPED\nCost: ~Rp 15K/month" as sql_agrotech <<database>>
+  }
+  
+  ' ============ CLOUD STORAGE ============
+  package "Cloud Storage Buckets (Total: ~43.5 GB)" #F3E5F5 {
+    storage "asia.artifacts...\n8.71 GB\nArtifact Registry" as gcs1 <<storage>>
+    storage "pharindo-operations\n15.28 GB (US)" as gcs2 <<storage>>
+    storage "econolab-gke-bucket\n12.32 GB" as gcs3 <<storage>>
+    storage "pharos-gke-bucket\n4.75 GB" as gcs4 <<storage>>
+    storage "hclab-results\n931 MB" as gcs5 <<storage>>
+    storage "ethical-dev-stg\n1.67 GB" as gcs6 <<storage>>
+    storage "century-gke\n732 MB" as gcs7 <<storage>>
+    storage "strapi-pharindo\n48 MB" as gcs8 <<storage>>
+    storage "db-migration\n48 MB" as gcs9 <<storage>>
+    storage "econolab_v2\n23 KB" as gcs10 <<storage>>
+  }
+  
+  ' ============ MONITORING & MANAGEMENT ============
+  package "Management Services" #ECEFF1 {
+    component "Cloud Logging" as logging <<monitoring>>
+    component "Cloud Monitoring" as monitoring <<monitoring>>
+    component "Cloud Build" as build <<monitoring>>
+    component "Container Analysis" as analysis <<monitoring>>
+  }
+}
+
+' ============ CONNECTIONS ============
+
+' Internet to Load Balancers
+users --> internet
+internet --> glb1
+internet --> rlb1
+internet --> rlb2
+internet --> rlb3
+internet --> ext_ip1
+internet --> ext_ip2
+
+' Load Balancers to GKE
+rlb1 --> gke_control : "HTTP/HTTPS"
+rlb2 --> gke_control : "HTTP/HTTPS"
+rlb3 --> gke_control : "HTTP"
+
+' GKE Internal
+gke_control --> node1
+gke_control --> node2
+gke_control --> node3
+
+node1 --> ns_nginx
+node1 --> ns_argocd
+node1 --> ns_develop
+
+node2 --> ns_nginx
+node2 --> ns_argocd
+node2 --> ns_develop
+
+node3 --> ns_nginx
+node3 --> ns_argocd
+node3 --> ns_develop
+
+node1 -down-> pvc1
+node1 -down-> pvc2
+node2 -down-> pvc3
+node3 -down-> pvc4
+node3 -down-> pvc5
+
+' NAT Connections
+gke_control --> nat : "Outbound"
+vm_hclab --> nat : "Outbound"
+vm_openvpn --> nat : "Outbound"
+
+' VPC Connections
+vpc --> subnet
+subnet --> gke_control
+subnet --> vm_hclab
+subnet --> vm_openvpn
+subnet --> vm_test
+subnet --> sql_econolab
+subnet --> sql_agrotech
+
+private_ip -.-> sql_econolab : "Private\nConnection"
+private_ip -.-> sql_agrotech : "Private\nConnection"
+
+' Database Connections
+ns_nginx --> sql_econolab : "DB Query"
+ns_argocd --> sql_econolab : "DB Query"
+ns_develop --> sql_econolab : "DB Query"
+vm_hclab --> sql_econolab : "DB Query"
+
+' Storage Connections
+node1 --> gcs1 : "Pull Images"
+node2 --> gcs1 : "Pull Images"
+node3 --> gcs1 : "Pull Images"
+
+node1 --> gcs3 : "Data"
+node1 --> gcs4 : "Data"
+node1 --> gcs7 : "Data"
+
+vm_hclab --> gcs5 : "Results"
+vm_hclab --> gcs6 : "Storage"
+
+build --> gcs1 : "Push Images"
+analysis --> gcs1 : "Scan"
+
+' Monitoring Connections
+gke_control --> logging
+gke_control --> monitoring
+vm_hclab --> logging
+vm_hclab --> monitoring
+vm_openvpn --> logging
+vm_openvpn --> monitoring
+sql_econolab --> logging
+sql_econolab --> monitoring
+
+' ============ NOTES & LEGEND ============
+
+note top of vm3_box
+  **⚠️ IMMEDIATE ACTION REQUIRED**
+  Terminated VM with attached disks
+  Wasting **Rp 1,316,770/month**
+  = Rp 15,801,240/year
+  
+  **Run cleanup commands:**
+  gcloud compute instances delete hclab-server-test
+  gcloud compute disks delete hclab-server-test
+  gcloud compute disks delete hclab-server-test-1
+  gcloud compute addresses delete hclab-server-test
+end note
+
+note right of gke_control
+  **GKE Cluster Summary**
+  • Nodes: 3x e2-standard-2
+  • Total: 6 vCPU, 24GB RAM
+  • Monthly Cost: ~Rp 3.7M
+  • Auto-scaling: Disabled
+  • Version: 1.32.9-gke.1072000
+end note
+
+note right of sql_econolab
+  **Database Configuration**
+  • Custom machine type
+  • Private IP via VPC Peering
+  • Automatic backups enabled
+  • High availability: Disabled
+end note
+
+legend bottom left
+|= **Component** |= **Status** |= **Monthly Cost (IDR)** |
+| <#E8F5E9> GKE Cluster | Running | Rp 3,739,692 |
+| <#FFF9C4> Compute VMs | Running | Rp 3,354,514 |
+| <#E3F2FD> Cloud SQL | 1 Running, 1 Stopped | Rp 636,368 |
+| <#E1F5FE> Load Balancers | 5 Active | Rp 2,602,030 |
+| <#F3E5F5> Cloud Storage | 43.5 GB | Rp 14,926 |
+| <#FFEBEE> Wasted Resources | ⚠️ TERMINATED | Rp 1,316,770 |
+| | |
+| **TOTAL CURRENT** | | **Rp 12,078,900** |
+| **AFTER CLEANUP** | | **Rp 10,762,130** |
+| | |
+| **Potential Annual Savings** | | **Rp 15,801,240** |
+
+**Key Metrics:**
+• Total VMs: 5 (3 GKE nodes + 2 standalone)
+• Total Storage: ~1.35 TB (disks) + 43.5 GB (GCS)
+• Network: 5 Load Balancers, 1 NAT Gateway
+• Databases: 2 PostgreSQL instances
+endlegend
+
+center footer Generated: October 20, 2025 | DevOps Team - Platform Engineering Division
+
+@enduml

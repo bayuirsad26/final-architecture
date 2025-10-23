@@ -1,0 +1,188 @@
+@startuml Pharindo_Cost_Optimization
+!define GCPPuml https://raw.githubusercontent.com/kkocel/gcp-icons-for-plantuml/master/dist
+!include GCPPuml/GCPCommon.puml
+!include GCPPuml/Compute/ComputeEngine.puml
+!include GCPPuml/Networking/CloudLoadBalancing.puml
+!include GCPPuml/Networking/CloudDNS.puml
+!include GCPPuml/Storage/CloudStorage.puml
+!include GCPPuml/Databases/CloudSQL.puml
+
+skinparam linetype ortho
+skinparam backgroundColor #FFFFFF
+skinparam defaultFontSize 11
+
+title **Pharindo Architecture - Cost Optimization Plan**\n**Current: Rp 12.1M/month → Target: Rp 8M/month | Users: 25-40**\n
+
+actor "25-40 Users" as users #4285F4
+
+package "BEFORE: Current Architecture (Singapore)" #FFEBEE {
+  
+  rectangle "❌ EXPENSIVE" {
+    rectangle "GKE Cluster\n6 vCPU, 24GB\n3 nodes\nRp 3.7M/month" as old_gke #FFCDD2
+    
+    rectangle "5 Load Balancers\nRp 2.6M/month" as old_lb #FFCDD2
+    
+    rectangle "Terminated VM\nRp 1.3M/month\nWASTED!" as old_waste #FF5252
+    
+    rectangle "Rumahweb SSL\nRp 1M/month" as old_ssl #FFCDD2
+  }
+  
+  rectangle "Kept Services" {
+    ComputeEngine(old_hclab, "hclab-server\nWindows\nRp 2M/month", "Lab Devices\nESSENTIAL")
+    CloudSQL(old_db, "econolab\nPostgreSQL\nRp 636K/month", "Singapore")
+  }
+  
+  note right of old_gke
+    **Overkill for 25-40 users!**
+    • Complex orchestration not needed
+    • High operational overhead
+    • Expensive for small scale
+  end note
+}
+
+package "AFTER: Optimized Architecture (Jakarta)" #E8F5E9 {
+  
+  package "Google Cloud - Jakarta Region (asia-southeast2)" {
+    
+    rectangle "🌐 Frontend Layer" #E3F2FD {
+      CloudDNS(dns, "Cloud DNS", "pharindo.com\nManage Records")
+      CloudLoadBalancing(new_lb, "HTTPS Load Balancer", "**FREE Google-managed SSL**\nAutomatic renewal\nRp 600K/month\nSingle LB for all services")
+    }
+    
+    rectangle "💻 Application Layer - Jakarta" #C8E6C9 {
+      ComputeEngine(app_vm, "pharindo-app-server", "**e2-standard-4**\n4 vCPU, 16GB RAM\nUbuntu 22.04 LTS\nRp 1.2M/month\nJakarta (asia-southeast2)")
+      
+      rectangle "Docker Compose Services" #A5D6A7 {
+        rectangle "🔵 nginx-ingress\nReverse Proxy\nSSL Termination" as nginx
+        rectangle "🔵 argocd\nGitOps Platform\nCI/CD" as argocd
+        rectangle "🔵 next-template\nMain Application\nNode.js/Next.js" as nextjs
+        rectangle "🔵 Additional Apps\nMicroservices" as apps
+      }
+      
+      CloudStorage(app_disk, "Boot Disk", "100GB SSD\nRp 17K/month")
+      CloudStorage(data_disk, "Data Disk", "200GB Balanced\nRp 200K/month")
+    }
+    
+    rectangle "🖥️ Essential Infrastructure" #FFF9C4 {
+      ComputeEngine(new_hclab, "hclab-server", "**n2d-standard-4**\nWindows Server\n4 vCPU, 16GB RAM\n**UNCHANGED**\nLab Device Integration\nRp 2M/month")
+      CloudStorage(hclab_disks, "Disks", "630GB\nRp 1.2M/month")
+      
+      note right of new_hclab
+        **DO NOT TOUCH**
+        • Vendor managed
+        • Lab device integration
+        • Essential for operations
+        • Keep current configuration
+      end note
+    }
+    
+    rectangle "💾 Data Layer - Jakarta" #E1F5FE {
+      CloudSQL(new_db, "econolab-jakarta", "PostgreSQL 17\ndb-custom-1-3840\n1 vCPU, 3.84GB\n**Migrated to Jakarta**\nRp 636K/month")
+      
+      CloudStorage(gcs_main, "Cloud Storage", "asia-southeast2\nApplication Data\n20GB total\nRp 10K/month")
+    }
+    
+    rectangle "🔐 VPN Access (Optional)" #FFF3E0 {
+      ComputeEngine(vpn_opt, "openvpn-server", "**e2-micro**\nOptional - Assess need\nRp 100K/month\nor DELETE if not used")
+    }
+  }
+}
+
+' Connections - New Architecture
+users --> dns : "HTTPS\npharindo.com"
+dns --> new_lb : "Route to LB"
+new_lb --> app_vm : "Distribute Traffic\nHealth Checks"
+
+app_vm --> nginx : "Container"
+app_vm --> argocd : "Container"
+app_vm --> nextjs : "Container"
+app_vm --> apps : "Container"
+
+nginx --> new_db : "SQL Queries"
+argocd --> new_db : "Config Storage"
+nextjs --> new_db : "App Database"
+apps --> new_db : "Data Access"
+
+new_hclab --> new_db : "Lab Data\nDirect Access"
+
+app_vm --> gcs_main : "Store Files\nBackup Data"
+new_hclab --> gcs_main : "Lab Results"
+
+app_vm -down-> app_disk
+app_vm -down-> data_disk
+new_hclab -down-> hclab_disks
+
+note bottom of app_vm
+  **Docker Compose Setup:**
+  • All services in containers
+  • Easy deployment & rollback
+  • Resource efficient
+  • Simple orchestration
+  • Automated with systemd
+  • Log aggregation
+  • Health monitoring
+  
+  **Backup Strategy:**
+  • Daily snapshots
+  • Cross-region backup to Singapore
+  • Automated via Cloud Scheduler
+end note
+
+note right of new_lb
+  **Google-managed SSL Benefits:**
+  ✓ Automatic provisioning
+  ✓ Auto-renewal (no expiry!)
+  ✓ FREE (no certificate cost)
+  ✓ Wildcard support
+  ✓ Multiple domains
+  
+  **Replace Rumahweb SSL:**
+  ✗ No more Rp 1M/month SSL cost
+  ✗ No manual renewal needed
+  ✓ Better security & performance
+end note
+
+legend right
+  **💰 Cost Comparison (Monthly IDR)**
+  
+  |= **BEFORE (Singapore)** |= **Cost** |= **AFTER (Jakarta)** |= **Cost** |= **Savings** |
+  | <color:#EA4335>GKE Cluster (3 nodes)</color> | Rp 3,739,692 | <color:#34A853>Single VM (e2-standard-4)</color> | Rp 1,200,000 | <color:#34A853>**-Rp 2,539,692**</color> |
+  | <color:#EA4335>5 Load Balancers</color> | Rp 2,602,030 | <color:#34A853>1 HTTPS LB + Free SSL</color> | Rp 600,000 | <color:#34A853>**-Rp 2,002,030**</color> |
+  | <color:#EA4335>Rumahweb SSL</color> | Rp 1,000,000 | <color:#34A853>Google-managed SSL</color> | Rp 0 | <color:#34A853>**-Rp 1,000,000**</color> |
+  | <color:#EA4335>Terminated VM Waste</color> | Rp 1,316,770 | <color:#34A853>Deleted</color> | Rp 0 | <color:#34A853>**-Rp 1,316,770**</color> |
+  | hclab-server (Essential) | Rp 2,040,894 | hclab-server (Unchanged) | Rp 2,040,894 | Rp 0 |
+  | Cloud SQL (Singapore) | Rp 636,368 | Cloud SQL (Jakarta) | Rp 636,368 | Rp 0 |
+  | openvpn-server | Rp 101,329 | Optional/Delete | Rp 0-100,000 | ~Rp 100,000 |
+  | Storage + Monitoring | Rp 430,526 | Storage + Monitoring | Rp 430,000 | ~Rp 0 |
+  |= **TOTAL BEFORE** |= **Rp 12,078,900** |= **TOTAL AFTER** |= **Rp 5,007,262** |= <color:#34A853>**-Rp 7,071,638**</color> |
+  
+  ---
+  
+  **🎯 ACHIEVEMENT:**
+  ✓ Target: Reduce to Rp 8M → **EXCEEDED!**
+  ✓ Actual: **Rp 5M/month** (even better!)
+  ✓ **Annual Savings: Rp 84,859,656** (~Rp 85M/year!)
+  
+  ---
+  
+  **📊 Cost Breakdown (New Architecture):**
+  • Application VM: Rp 1,200,000 (24%)
+  • hclab-server: Rp 2,040,894 (41%)
+  • Load Balancer: Rp 600,000 (12%)
+  • Cloud SQL: Rp 636,368 (13%)
+  • Storage + Other: Rp 530,000 (10%)
+  
+  ---
+  
+  **✅ Objectives Achieved:**
+  1. ✓ Cost: Rp 12M → Rp 5M (Target was Rp 8M!)
+  2. ✓ Region: Singapore → Jakarta
+  3. ✓ Free Google-managed SSL (save Rp 1M)
+  4. ✓ hclab-server untouched
+  5. ✓ Simpler architecture (VM vs GKE)
+  6. ✓ Better for 25-40 users scale
+endlegend
+
+center footer **Migration Plan:** 21 Oct - Finalize design | 22-24 Oct - Trial deployment & SSL setup | 27 Oct - Pindah IP | 28-31 Oct - Production trial
+
+@enduml

@@ -1,0 +1,302 @@
+@startuml Pharindo_Optimized_Architecture
+!define GCPPuml https://raw.githubusercontent.com/kkocel/gcp-icons-for-plantuml/master/dist
+!include GCPPuml/GCPCommon.puml
+!include GCPPuml/Compute/ComputeEngine.puml
+!include GCPPuml/Networking/CloudLoadBalancing.puml
+!include GCPPuml/Networking/CloudNAT.puml
+!include GCPPuml/Networking/VirtualPrivateCloud.puml
+!include GCPPuml/Storage/CloudStorage.puml
+!include GCPPuml/Databases/CloudSQL.puml
+!include GCPPuml/ManagementTools/Monitoring.puml
+
+skinparam linetype ortho
+skinparam backgroundColor #FFFFFF
+
+title **PHARINDO - Cost-Optimized Architecture**\n**Target: 25-40 Users | Region: Jakarta (asia-southeast2)**\n**Current Cost: Rp 12M → Target Cost: Rp 8M/month**\n
+
+actor "25-40 Users" as users #4285F4
+
+cloud "Internet" as internet #E8E8E8
+
+rectangle "Rumahweb Domain + SSL\n❌ REMOVE (Save Rp 1M/month)" as rumahweb #FFCDD2
+
+package "GCP Project: Pharindo (Jakarta Region)" {
+  
+  ' ============================================
+  ' LOAD BALANCING WITH MANAGED SSL
+  ' ============================================
+  package "Load Balancing Layer (Rp 500K/month)" #E1F5FE {
+    CloudLoadBalancing(lb_https, "HTTPS Load Balancer", "Google-managed SSL\nAutomatic Certificate\nHTTPS → HTTPS\n✅ FREE SSL")
+    
+    rectangle "SSL Certificate" #C8E6C9 {
+      rectangle "✅ Let's Encrypt\nAuto-renewal\nGoogle Managed" as ssl_cert
+    }
+    
+    rectangle "Backend Service" as backend {
+      rectangle "Health Check\nHTTP /health" as health
+    }
+  }
+  
+  ' ============================================
+  ' NETWORKING
+  ' ============================================
+  package "VPC Network - Jakarta" #E0F7FA {
+    VirtualPrivateCloud(vpc, "VPC Network", "10.184.0.0/20\nasia-southeast2")
+    CloudNAT(nat, "Cloud NAT", "Outbound Internet\nAPI Calls")
+    
+    rectangle "Firewall Rules" {
+      rectangle "Allow HTTPS (443)\nAllow HTTP (80)\nAllow SSH (22)" as firewall
+    }
+  }
+  
+  ' ============================================
+  ' COMPUTE VMs (Replace GKE)
+  ' ============================================
+  package "Application VMs - Jakarta (Rp 2.5M/month)" #E8F5E9 {
+    rectangle "VM Instance Group (Auto-scaling)" {
+      ComputeEngine(vm_app1, "pharindo-app-1", "e2-standard-4\n4 vCPU, 16GB RAM\nDocker + Nginx\nUbuntu 22.04")
+      ComputeEngine(vm_app2, "pharindo-app-2", "e2-standard-4\n4 vCPU, 16GB RAM\nDocker + Nginx\nUbuntu 22.04")
+      
+      rectangle "Optional for scaling" as vm_app3_optional #FFF9C4 {
+        ComputeEngine(vm_app3, "pharindo-app-3", "e2-standard-2\n2 vCPU, 8GB RAM\nStandby/Auto-scale")
+      }
+    }
+    
+    rectangle "Application Stack" #C8E6C9 {
+      rectangle "Docker Compose" as docker {
+        rectangle "Next.js App" as nextjs
+        rectangle "ArgoCD (Optional)" as argocd
+        rectangle "Nginx Reverse Proxy" as nginx
+      }
+    }
+    
+    CloudStorage(app_disk1, "Boot + Data", "100GB SSD\nper VM")
+  }
+  
+  ' ============================================
+  ' WINDOWS VM (Existing)
+  ' ============================================
+  package "Windows Server - Jakarta (Rp 1.5M/month)" #FFF9C4 {
+    ComputeEngine(vm_hclab, "hclab-server-jakarta", "n2d-standard-2\n2 vCPU, 8GB RAM\nWindows Server 2022\n✅ Downsized from 4 vCPU")
+    CloudStorage(hclab_disk, "Disks", "150GB SSD\n✅ Optimized")
+    
+    rectangle "Windows Services" {
+      rectangle "HC Lab Application" as hclab_app
+      rectangle "Legacy Services" as legacy
+    }
+  }
+  
+  ' ============================================
+  ' VPN SERVER (Optional - Keep or Remove)
+  ' ============================================
+  package "VPN Server (Optional - Rp 100K/month)" #FFF3E0 {
+    ComputeEngine(vm_vpn, "openvpn-server", "e2-micro\nOptional\nCan use Cloud VPN instead")
+  }
+  
+  ' ============================================
+  ' DATABASE
+  ' ============================================
+  package "Cloud SQL - Jakarta (Rp 500K/month)" #E3F2FD {
+    CloudSQL(db_main, "pharindo-db", "PostgreSQL 17\ndb-custom-1-3840\n1 vCPU, 3.84GB RAM\n✅ Optimized storage\nPrivate IP only")
+    
+    rectangle "Database Optimization" #C8E6C9 {
+      rectangle "✅ Automated backups\n✅ Reduced storage\n✅ No HA (dev/staging)" as db_opt
+    }
+  }
+  
+  ' ============================================
+  ' STORAGE
+  ' ============================================
+  package "Cloud Storage - Jakarta (Rp 50K/month)" #F3E5F5 {
+    CloudStorage(gcs_app, "pharindo-app-data", "Application Data\n15-20 GB\nJakarta region")
+    CloudStorage(gcs_backup, "pharindo-backups", "Backups\nNearline storage\nCost-optimized")
+    CloudStorage(gcs_static, "pharindo-static", "Static Assets\nCDN-enabled")
+  }
+  
+  ' ============================================
+  ' MONITORING (Essential Only)
+  ' ============================================
+  package "Monitoring (Rp 200K/month)" #ECEFF1 {
+    Monitoring(monitoring, "Cloud Monitoring", "Essential metrics only\nCost-optimized")
+    rectangle "Uptime Checks" as uptime
+    rectangle "Alerting" as alerts
+  }
+}
+
+' ============================================
+' CONNECTIONS
+' ============================================
+
+users --> internet : "HTTPS"
+internet -down-> rumahweb : "❌ Old way\n(Remove)"
+rumahweb -.down.-> lb_https : "Migrate to"
+
+internet --> lb_https : "✅ New way\nHTTPS (443)"
+
+lb_https --> ssl_cert : "Managed SSL"
+lb_https --> backend
+backend --> health
+
+lb_https --> vm_app1 : "HTTPS"
+lb_https --> vm_app2 : "HTTPS"
+lb_https --> vm_app3 : "Auto-scale"
+
+vm_app1 --> docker
+vm_app2 --> docker
+
+docker --> nextjs
+docker --> nginx
+docker --> argocd
+
+vm_app1 --> db_main : "SQL Queries"
+vm_app2 --> db_main : "SQL Queries"
+vm_hclab --> db_main : "Direct Access"
+
+vm_app1 --> gcs_app : "Store/Retrieve"
+vm_app2 --> gcs_app : "Store/Retrieve"
+vm_hclab --> gcs_backup : "Backups"
+
+nginx --> gcs_static : "Serve Static"
+
+vpc --> vm_app1
+vpc --> vm_app2
+vpc --> vm_app3
+vpc --> vm_hclab
+vpc --> vm_vpn
+vpc --> db_main
+
+vm_app1 --> nat : "API Calls"
+vm_app2 --> nat : "API Calls"
+vm_hclab --> nat : "Updates"
+
+vm_app1 --> monitoring
+vm_app2 --> monitoring
+vm_hclab --> monitoring
+db_main --> monitoring
+
+vm_app1 -down-> app_disk1
+vm_app2 -down-> app_disk1
+vm_hclab -down-> hclab_disk
+
+users -down-> vm_hclab : "RDP Access\n(If needed)"
+
+' ============================================
+' MIGRATION NOTES
+' ============================================
+
+note top of lb_https
+  **✅ Google-managed SSL Benefits:**
+  • Automatic certificate provisioning
+  • Auto-renewal (no manual work)
+  • Free (no Rp 1M/month cost)
+  • Supports multiple domains
+  • Let's Encrypt integration
+  
+  **Setup:**
+  1. Create Load Balancer
+  2. Add your domain
+  3. Google provisions SSL automatically
+  4. Redirects HTTP → HTTPS automatically
+end note
+
+note right of vm_app1
+  **VM Application Stack:**
+  
+  **Docker Compose Services:**
+  • Next.js application
+  • Nginx reverse proxy
+  • ArgoCD (optional for GitOps)
+  
+  **Why not GKE?**
+  • 25-40 users = overkill for K8s
+  • Docker Compose sufficient
+  • Easier management
+  • Lower cost (Rp 2.5M vs Rp 3.7M)
+  
+  **Auto-scaling:**
+  • Start with 2 VMs
+  • Add 3rd VM when CPU > 70%
+  • Remove when CPU < 30%
+end note
+
+note bottom of db_main
+  **Database Optimization:**
+  
+  **Changes from Current:**
+  • Region: Singapore → Jakarta
+  • Storage: 10GB SSD (no over-provisioning)
+  • HA: Disabled for dev/staging
+  • Backups: Retained (automated)
+  
+  **Cost Reduction:**
+  • Jakarta region cheaper
+  • Right-sized storage
+  • Same performance for 25-40 users
+end note
+
+note right of gcs_app
+  **Storage Optimization:**
+  
+  • Move to Jakarta region
+  • Use lifecycle policies
+  • Archive old data to Nearline
+  • Enable CDN for static assets
+  
+  **Estimated savings:**
+  • Regional vs Multi-regional
+  • Lifecycle management
+  • ~30% cost reduction
+end note
+
+' ============================================
+' COST COMPARISON LEGEND
+' ============================================
+
+legend left
+  **💰 COST BREAKDOWN COMPARISON**
+  
+  |= Component |= Current (Singapore) |= Optimized (Jakarta) |= Savings |
+  | <color:#EA4335>●</color> GKE Cluster (3 nodes) | Rp 3,739,692 | ❌ **REMOVED** | **-Rp 3,739,692** |
+  | <color:#34A853>●</color> Application VMs | - | Rp 2,500,000 | **NEW** |
+  | <color:#FBBC04>●</color> Windows VM (hclab) | Rp 2,040,894 | Rp 1,500,000 | **-Rp 540,894** |
+  | <color:#4285F4>●</color> Load Balancer | Rp 2,602,030 | Rp 500,000 | **-Rp 2,102,030** |
+  | <color:#EA4335>●</color> Wasted Resources | Rp 1,316,770 | ❌ **DELETED** | **-Rp 1,316,770** |
+  | <color:#4285F4>●</color> Cloud SQL | Rp 636,368 | Rp 500,000 | **-Rp 136,368** |
+  | <color:#9AA0A6>●</color> Storage (GCS) | Rp 14,926 | Rp 50,000 | **+Rp 35,074** |
+  | <color:#FBBC04>●</color> Rumahweb SSL | Rp 1,000,000 | ❌ **REMOVED** | **-Rp 1,000,000** |
+  | <color:#9AA0A6>●</color> Monitoring | Rp 414,600 | Rp 200,000 | **-Rp 214,600** |
+  | <color:#34A853>●</color> Cloud NAT | Rp 746,280 | Rp 500,000 | **-Rp 246,280** |
+  | <color:#9AA0A6>●</color> VPN (Optional) | Rp 101,329 | Rp 100,000 | **-Rp 1,329** |
+  | <color:#9AA0A6>●</color> Other Services | Rp 465,911 | Rp 200,000 | **-Rp 265,911** |
+  |= **TOTAL** |= **Rp 12,078,900** |= **Rp 8,050,000** |= **-Rp 4,028,900** |
+  
+  ---
+  
+  **✅ ACHIEVED GOALS:**
+  1. ✅ Cost reduced from Rp 12M → Rp 8M (**33% savings**)
+  2. ✅ Migrated Singapore → Jakarta (lower latency for ID users)
+  3. ✅ Google-managed SSL (saved Rp 1M/month from Rumahweb)
+  4. ✅ Replaced GKE with VMs (simpler for 25-40 users)
+  
+  **📊 ANNUAL SAVINGS: Rp 48,346,800/year**
+  
+  ---
+  
+  **🎯 PERFORMANCE FOR 25-40 USERS:**
+  • 2x e2-standard-4 = 8 vCPU, 32GB RAM total
+  • Can handle 100+ concurrent users easily
+  • Auto-scale to 3rd VM if needed
+  • Much simpler than Kubernetes
+  
+  **🚀 MIGRATION TIMELINE:**
+  • 21 Oct: Architecture finalization ✅
+  • 22-24 Oct: Deploy VMs, test Docker stack
+  • 24 Oct: Setup Load Balancer + SSL
+  • 27 Oct: DNS migration (Pindah IP)
+  • 28-31 Oct: Production trial run
+  • 1 Nov: Decommission Singapore resources
+endlegend
+
+center footer **Migration Project: Pharindo Cost Optimization** | **DevOps Team** | **Target Go-Live: 28-31 October 2025**
+
+@enduml
