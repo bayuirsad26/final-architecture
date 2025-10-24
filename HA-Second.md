@@ -163,8 +163,8 @@ Dengan budget Rp 50 juta, saya rekomendasikan beli **2-3 server bekas** untuk Hi
 
 ```
 ┌─────────────────────────────────────────────────┐
-│           HAProxy / Load Balancer VM             │
-│         (Floating IP via Keepalived)             │
+│          HAProxy / Load Balancer VM             │
+│         (Floating IP via Keepalived)            │
 └─────────────────────────────────────────────────┘
                        │
         ┌──────────────┼──────────────┐
